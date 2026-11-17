@@ -105,12 +105,12 @@ private fun AstralApp() {
                     Text("MA3 2.4", color = TextMain, fontSize = 12.sp)
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("PILOT", "WEB REMOTE", "USTAWIENIA").forEach { item ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                listOf("PILOT", "VALUE CTRL", "WEB REMOTE", "USTAWIENIA").forEach { item ->
                     val selected = tab == item
                     Button(onClick = { tab = item }, modifier = Modifier.weight(1f).height(42.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = if (selected) Blue else Panel),
-                        contentPadding = PaddingValues(horizontal = 4.dp)) { Text(item, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        contentPadding = PaddingValues(horizontal = 2.dp)) { Text(item, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
                 }
             }
             when (tab) {
@@ -123,6 +123,12 @@ private fun AstralApp() {
                         commandLog = message
                     }
                 }, commandLog)
+                "VALUE CTRL" -> ValueControlScreen { command ->
+                    sendOsc(host, oscPort.toIntOrNull() ?: 8000, oscPath, command) { ok, message ->
+                        status = if (ok) "OSC WYSŁANY" else "BŁĄD OSC"
+                        commandLog = message
+                    }
+                }
                 "WEB REMOTE" -> WebRemoteScreen(host, webPort.toIntOrNull() ?: 8080)
                 else -> SettingsScreen(host, { host = it }, oscPort, { oscPort = it }, listenPort, { listenPort = it }, webPort, { webPort = it },
                     oscPath, { oscPath = it }, {
@@ -227,6 +233,60 @@ private fun SmallAction(label: String, modifier: Modifier = Modifier, onClick: (
     Button(onClick = onClick, modifier = modifier.height(30.dp), contentPadding = PaddingValues(0.dp),
         colors = ButtonDefaults.buttonColors(containerColor = if (label == "OFF") Color(0xFF713443) else Color(0xFF174C7B))) {
         Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun ValueControlScreen(onSend: (String) -> Unit) {
+    var command by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Column {
+                Text("PROGRAMMER / VALUE CONTROL", color = TextMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("Ekranowe encodery • wysyłanie przez OSC", color = Muted, fontSize = 10.sp)
+            }
+            Text("OSC", color = Blue, fontWeight = FontWeight.Black, fontSize = 12.sp)
+        }
+        LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 6.dp)) {
+            items(listOf("Dimmer", "Pan", "Tilt", "Zoom", "Focus", "Iris", "Speed", "Size", "Phase", "Width")) { attribute ->
+                ValueEncoderCard(attribute, onSend)
+            }
+        }
+        Text("COMMAND LINE", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(value = command, onValueChange = { command = it }, modifier = Modifier.weight(1f),
+                singleLine = true, placeholder = { Text("Wpisz komendę grandMA3") },
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextMain, unfocusedTextColor = TextMain,
+                    focusedBorderColor = Blue, unfocusedBorderColor = Muted))
+            Button(onClick = { if (command.isNotBlank()) { onSend(command.trim()); command = "" } },
+                modifier = Modifier.height(54.dp), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("SEND") }
+        }
+        Text("Uwaga: dostępność atrybutów i składnia komend zależą od zaznaczenia oraz konfiguracji grandMA3. Wysłanie OSC nie potwierdza wykonania polecenia.", color = Muted, fontSize = 9.sp)
+    }
+}
+
+@Composable
+private fun ValueEncoderCard(attribute: String, onSend: (String) -> Unit) {
+    var value by remember(attribute) { mutableFloatStateOf(if (attribute == "Dimmer") 0f else 50f) }
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = Panel)) {
+        Column(Modifier.padding(horizontal = 9.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(attribute.uppercase(), color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(value.toInt().toString(), color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Black)
+            Slider(value = value, onValueChange = { value = it }, valueRange = 0f..100f,
+                onValueChangeFinished = { onSend("Attribute \"$attribute\" At ${value.toInt()}") },
+                modifier = Modifier.height(30.dp), colors = SliderDefaults.colors(thumbColor = Blue, activeTrackColor = Blue))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = { value = (value - 5f).coerceAtLeast(0f); onSend("Attribute \"$attribute\" At ${value.toInt()}") },
+                    contentPadding = PaddingValues(horizontal = 4.dp)) { Text("−5", color = TextMain) }
+                TextButton(onClick = { value = 0f; onSend("Attribute \"$attribute\" At 0") },
+                    contentPadding = PaddingValues(horizontal = 4.dp)) { Text("MIN", color = Muted, fontSize = 10.sp) }
+                TextButton(onClick = { value = (value + 5f).coerceAtMost(100f); onSend("Attribute \"$attribute\" At ${value.toInt()}") },
+                    contentPadding = PaddingValues(horizontal = 4.dp)) { Text("+5", color = TextMain) }
+            }
+        }
     }
 }
 
