@@ -3,6 +3,8 @@ package com.astral.grandma3remote
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -218,6 +220,7 @@ private fun WebRemoteScreen(host: String, port: Int) {
 }
 
 private val sender = Executors.newSingleThreadExecutor()
+private val mainHandler = Handler(Looper.getMainLooper())
 
 private fun sendOsc(host: String, port: Int, path: String, command: String, callback: (Boolean, String) -> Unit) {
     sender.execute {
@@ -228,9 +231,9 @@ private fun sendOsc(host: String, port: Int, path: String, command: String, call
                 val address = InetAddress.getByName(host)
                 socket.send(DatagramPacket(packetBytes, packetBytes.size, address, port))
             }
-            callback(true, "Wysłano OSC: $command")
+            mainHandler.post { callback(true, "Wysłano OSC: $command") }
         } catch (e: Exception) {
-            callback(false, "Błąd wysyłania: ${e.message ?: "sprawdź IP i port"}")
+            mainHandler.post { callback(false, "Błąd wysyłania: ${e.message ?: "sprawdź IP i port"}") }
         }
     }
 }
