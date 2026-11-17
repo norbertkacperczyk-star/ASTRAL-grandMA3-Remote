@@ -242,11 +242,16 @@ private fun WebRemoteScreen(host: String, port: Int) {
                         if (request?.isForMainFrame == true) error = true
                     }
                 }
-                loadUrl("http://$host:$port")
+                val initialUrl = "http://$host:$port"
+                tag = initialUrl
+                loadUrl(initialUrl)
             }
         }, update = { view ->
             val target = "http://$host:$port"
-            if (view.url != target && view.url == null) view.loadUrl(target)
+            if (view.tag != target) {
+                view.tag = target
+                view.loadUrl(target)
+            }
         })
         if (error) Text("Nie udało się otworzyć Web Remote. Sprawdź IP, port i sieć.", color = Color(0xFFFF8B8B), fontSize = 11.sp)
     }
