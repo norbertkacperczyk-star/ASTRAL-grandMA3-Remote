@@ -10,6 +10,7 @@ import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -57,6 +58,9 @@ private fun AstralApp() {
     var tab by remember { mutableStateOf("PILOT") }
     var status by remember { mutableStateOf("NIEPOŁĄCZONO") }
     var commandLog by remember { mutableStateOf("Gotowy do wysyłania poleceń OSC") }
+    var executorNames by remember {
+        mutableStateOf((1..150).associateWith { prefs.getString("executor_name_$it", "") ?: "" })
+    }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Blue, background = Navy, surface = Panel, onPrimary = Color.White, onBackground = TextMain, onSurface = TextMain)) {
         Column(Modifier.fillMaxSize().background(Navy).statusBarsPadding().navigationBarsPadding()) {
@@ -79,7 +83,10 @@ private fun AstralApp() {
                 }
             }
             when (tab) {
-                "PILOT" -> PilotScreen(page, { page = it }, { command ->
+                "PILOT" -> PilotScreen(page, { page = it }, executorNames, { executor, name ->
+                    executorNames = executorNames + (executor to name)
+                    prefs.edit().putString("executor_name_$executor", name).apply()
+                }, { command ->
                     sendOsc(host, oscPort.toIntOrNull() ?: 8000, oscPath, command) { ok, message ->
                         status = if (ok) "OSC WYSŁANY" else "BŁĄD OSC"
                         commandLog = message
@@ -103,7 +110,7 @@ private fun AstralApp() {
 }
 
 @Composable
-private fun PilotScreen(page: Int, onPage: (Int) -> Unit, onSend: (String) -> Unit, commandLog: String) {
+private fun PilotScreen(page: Int, onPage: (Int) -> Unit, executorNames: Map<Int, String>, onRename: (Int, String) -> Unit, onSend: (String) -> Unit, commandLog: String) {
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("EXECUTORS", color = TextMain, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -119,7 +126,7 @@ private fun PilotScreen(page: Int, onPage: (Int) -> Unit, onSend: (String) -> Un
         LazyVerticalGrid(columns = GridCells.Fixed(3), modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(9.dp), horizontalArrangement = Arrangement.spacedBy(9.dp),
             contentPadding = PaddingValues(bottom = 8.dp)) {
-            items((1..15).toList()) { index -> ExecutorTile((page - 1) * 15 + index, onSend) }
+            items((1..15).toList()) { index -> val id = (page - 1) * 15 + index; ExecutorTile(id, executorNames[id].orEmpty().ifBlank { "EXEC $id" }, onRename, onSend) }
         }
         Text("SZYBKIE STEROWANIE", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -138,11 +145,14 @@ private fun PilotScreen(page: Int, onPage: (Int) -> Unit, onSend: (String) -> Un
 }
 
 @Composable
-private fun ExecutorTile(executor: Int, onSend: (String) -> Unit) {
+private fun ExecutorTile(executor: Int, label: String, onRename: (Int, String) -> Unit, onSend: (String) -> Unit) {
     var level by remember { mutableFloatStateOf(0f) }
+    var editingName by remember { mutableStateOf(false) }
+    var draftName by remember(label) { mutableStateOf(label) }
     Card(Modifier.fillMaxWidth().height(136.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
         Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("EXEC $executor", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = TextMain, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, modifier = Modifier.clickable { draftName = label; editingName = true })
             Spacer(Modifier.height(5.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 SmallAction("GO", Modifier.weight(1f)) { onSend("Go Executor $executor") }
@@ -154,6 +164,29 @@ private fun ExecutorTile(executor: Int, onSend: (String) -> Unit) {
                 modifier = Modifier.height(30.dp), colors = SliderDefaults.colors(thumbColor = Blue, activeTrackColor = Blue))
             Text("${(level * 100).toInt()}%", color = TextMain, fontSize = 10.sp)
         }
+    }
+    if (editingName) {
+        AlertDialog(
+            onDismissRequest = { editingName = false },
+            title = { Text("Nazwa executora $executor") },
+            text = {
+                OutlinedTextField(
+                    value = draftName,
+                    onValueChange = { draftName = it.take(24) },
+                    singleLine = true,
+                    label = { Text("Nazwa widoczna na przycisku") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRename(executor, draftName.trim())
+                    editingName = false
+                }) { Text("ZAPISZ") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingName = false }) { Text("ANULUJ") }
+            }
+        )
     }
 }
 
