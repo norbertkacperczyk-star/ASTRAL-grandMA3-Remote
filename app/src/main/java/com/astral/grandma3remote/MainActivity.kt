@@ -32,6 +32,10 @@ import java.net.InetAddress
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.util.concurrent.Executors
+import java.net.SocketTimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 private val Navy = Color(0xFF071426)
 private val Panel = Color(0xFF10243D)
@@ -52,6 +56,8 @@ private fun AstralApp() {
     val prefs = remember { context.getSharedPreferences("astral_remote", Context.MODE_PRIVATE) }
     var host by remember { mutableStateOf(prefs.getString("host", "192.168.0.100") ?: "192.168.0.100") }
     var oscPort by remember { mutableStateOf(prefs.getInt("osc_port", 8000).toString()) }
+    var listenPort by remember { mutableStateOf(prefs.getInt("listen_port", 8001).toString()) }
+    var feedbackLog by remember { mutableStateOf("Oczekiwanie na feedback OSC…") }
     var webPort by remember { mutableStateOf(prefs.getInt("web_port", 8080).toString()) }
     var oscPath by remember { mutableStateOf(prefs.getString("osc_path", "/cmd") ?: "/cmd") }
     var page by remember { mutableIntStateOf(1) }
@@ -60,6 +66,31 @@ private fun AstralApp() {
     var commandLog by remember { mutableStateOf("Gotowy do wysyłania poleceń OSC") }
     var executorNames by remember {
         mutableStateOf((1..150).associateWith { prefs.getString("executor_name_$it", "") ?: "" })
+    }
+
+    DisposableEffect(listenPort) {
+        val port = listenPort.toIntOrNull()?.takeIf { it in 1024..65535 } ?: 8001
+        val running = AtomicBoolean(true)
+        val socket = try { DatagramSocket(port).apply { soTimeout = 1000 } } catch (e: Exception) {
+            mainHandler.post { feedbackLog = "Nie można uruchomić nasłuchu UDP na porcie $port: \${e.message}" }
+            null
+        }
+        val thread = if (socket != null) Thread {
+            val buffer = ByteArray(4096)
+            while (running.get()) {
+                try {
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    socket.receive(packet)
+                    val decoded = decodeOscPacket(packet.data, packet.length)
+                    mainHandler.post { feedbackLog = decoded; status = "OSC ODEBRANY" }
+                } catch (_: SocketTimeoutException) {
+                } catch (e: Exception) {
+                    if (running.get()) mainHandler.post { feedbackLog = "Błąd nasłuchu OSC: \${e.message}" }
+                }
+            }
+        }.apply { name = "AstralOscReceiver"; isDaemon = true; start() } else null
+        if (socket != null) feedbackLog = "Nasłuch OSC aktywny • UDP $port"
+        onDispose { running.set(false); socket?.close(); thread?.interrupt() }
     }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Blue, background = Navy, surface = Panel, onPrimary = Color.White, onBackground = TextMain, onSurface = TextMain)) {
@@ -93,9 +124,10 @@ private fun AstralApp() {
                     }
                 }, commandLog)
                 "WEB REMOTE" -> WebRemoteScreen(host, webPort.toIntOrNull() ?: 8080)
-                else -> SettingsScreen(host, { host = it }, oscPort, { oscPort = it }, webPort, { webPort = it },
+                else -> SettingsScreen(host, { host = it }, oscPort, { oscPort = it }, listenPort, { listenPort = it }, webPort, { webPort = it },
                     oscPath, { oscPath = it }, {
                         prefs.edit().putString("host", host).putInt("osc_port", oscPort.toIntOrNull() ?: 8000)
+                            .putInt("listen_port", listenPort.toIntOrNull() ?: 8001)
                             .putInt("web_port", webPort.toIntOrNull() ?: 8080).putString("osc_path", oscPath).apply()
                         commandLog = "Ustawienia zapisane na tym urządzeniu"
                     }, {
@@ -103,7 +135,7 @@ private fun AstralApp() {
                             status = if (ok) "OSC WYSŁANY" else "BŁĄD OSC"
                             commandLog = msg
                         }
-                    }, commandLog)
+                    }, commandLog, feedbackLog)
             }
         }
     }
@@ -200,19 +232,22 @@ private fun SmallAction(label: String, modifier: Modifier = Modifier, onClick: (
 
 @Composable
 private fun SettingsScreen(host: String, setHost: (String) -> Unit, oscPort: String, setOscPort: (String) -> Unit,
-    webPort: String, setWebPort: (String) -> Unit, oscPath: String, setOscPath: (String) -> Unit,
-    onSave: () -> Unit, onTest: () -> Unit, commandLog: String) {
+    listenPort: String, setListenPort: (String) -> Unit, webPort: String, setWebPort: (String) -> Unit, oscPath: String, setOscPath: (String) -> Unit,
+    onSave: () -> Unit, onTest: () -> Unit, commandLog: String, feedbackLog: String) {
     Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("POŁĄCZENIE Z KONSOLĄ", color = TextMain, fontSize = 17.sp, fontWeight = FontWeight.Bold)
         Text("Telefon i grandMA3 muszą być w tej samej sieci lokalnej Wi-Fi/LAN.", color = Muted, fontSize = 12.sp)
         ConfigField("ADRES IP GRANDMA3", host, setHost)
-        ConfigField("PORT OSC (UDP)", oscPort, setOscPort)
+        ConfigField("PORT OSC WYJŚCIOWY (UDP)", oscPort, setOscPort)
+        ConfigField("PORT NASŁUCHU FEEDBACK (UDP)", listenPort, setListenPort)
         ConfigField("PORT WEB REMOTE", webPort, setWebPort)
         ConfigField("ADRES OSC", oscPath, setOscPath)
         Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("ZAPISZ USTAWIENIA") }
         OutlinedButton(onClick = onTest, modifier = Modifier.fillMaxWidth().height(46.dp)) { Text("WYŚLIJ TEST OSC") }
         Text(commandLog, color = Muted, fontSize = 11.sp)
-        Text("Porty i adres OSC są konfigurowalne. Sprawdź port wejściowy OSC oraz mapowanie poleceń w ustawieniach grandMA3.", color = Muted, fontSize = 11.sp)
+        Text("OSTATNI FEEDBACK Z GRANDMA3", color = Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Text(feedbackLog, color = TextMain, fontSize = 11.sp)
+        Text("W grandMA3 ustaw OSC Output: Enable Output, Send = Yes, Destination IP = adres telefonu, Port = port nasłuchu powyżej. Odbieranie danych nie oznacza jeszcze synchronizacji nazw executorów.", color = Muted, fontSize = 11.sp)
     }
 }
 
@@ -274,6 +309,31 @@ private fun sendOsc(host: String, port: Int, path: String, command: String, call
             mainHandler.post { callback(false, "Błąd wysyłania: ${e.message ?: "sprawdź IP i port"}") }
         }
     }
+}
+
+private fun decodeOscPacket(data: ByteArray, length: Int): String {
+    fun readOscString(start: Int): Pair<String, Int> {
+        if (start >= length) return "" to length
+        var end = start
+        while (end < length && data[end].toInt() != 0) end++
+        val value = String(data, start, end - start, Charsets.UTF_8)
+        return value to (((end + 4) / 4) * 4).coerceAtMost(length)
+    }
+    return try {
+        val (address, afterAddress) = readOscString(0)
+        val (tags, afterTags) = readOscString(afterAddress)
+        val values = mutableListOf<String>()
+        var offset = afterTags
+        val buffer = ByteBuffer.wrap(data, 0, length).order(ByteOrder.BIG_ENDIAN)
+        for (tag in tags.drop(1)) when (tag) {
+            'i' -> if (offset + 4 <= length) { values += buffer.getInt(offset).toString(); offset += 4 }
+            'f' -> if (offset + 4 <= length) { values += "%.1f".format(buffer.getFloat(offset)); offset += 4 }
+            's' -> { val (v, next) = readOscString(offset); values += v; offset = next }
+            'T' -> values += "true"
+            'F' -> values += "false"
+        }
+        if (values.isEmpty()) "$address $tags" else "$address  \${values.joinToString(", ")}"
+    } catch (_: Exception) { "Odebrano pakiet OSC (\${length} B)" }
 }
 
 private fun oscMessage(address: String, value: String): ByteArray {
