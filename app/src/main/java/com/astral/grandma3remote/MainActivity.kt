@@ -72,7 +72,7 @@ private fun AstralApp() {
         val port = listenPort.toIntOrNull()?.takeIf { it in 1024..65535 } ?: 8001
         val running = AtomicBoolean(true)
         val socket = try { DatagramSocket(port).apply { soTimeout = 1000 } } catch (e: Exception) {
-            mainHandler.post { feedbackLog = "Nie można uruchomić nasłuchu UDP na porcie $port: \${e.message}" }
+            mainHandler.post { feedbackLog = "Nie można uruchomić nasłuchu UDP na porcie $port: ${e.message}" }
             null
         }
         val thread = if (socket != null) Thread {
@@ -85,7 +85,7 @@ private fun AstralApp() {
                     mainHandler.post { feedbackLog = decoded; status = "OSC ODEBRANY" }
                 } catch (_: SocketTimeoutException) {
                 } catch (e: Exception) {
-                    if (running.get()) mainHandler.post { feedbackLog = "Błąd nasłuchu OSC: \${e.message}" }
+                    if (running.get()) mainHandler.post { feedbackLog = "Błąd nasłuchu OSC: ${e.message}" }
                 }
             }
         }.apply { name = "AstralOscReceiver"; isDaemon = true; start() } else null
@@ -332,8 +332,8 @@ private fun decodeOscPacket(data: ByteArray, length: Int): String {
             'T' -> values += "true"
             'F' -> values += "false"
         }
-        if (values.isEmpty()) "$address $tags" else "$address  \${values.joinToString(", ")}"
-    } catch (_: Exception) { "Odebrano pakiet OSC (\${length} B)" }
+        if (values.isEmpty()) "$address $tags" else "$address  ${values.joinToString(", ")}"
+    } catch (_: Exception) { "Odebrano pakiet OSC (${length} B)" }
 }
 
 private fun oscMessage(address: String, value: String): ByteArray {
