@@ -123,7 +123,7 @@ private fun AstralApp() {
                         commandLog = message
                     }
                 }, commandLog)
-                "VALUE CTRL" -> ValueControlScreen { command ->
+                "VALUE CTRL" -> ValueControlScreen(feedbackLog, commandLog) { command ->
                     sendOsc(host, oscPort.toIntOrNull() ?: 8000, oscPath, command) { ok, message ->
                         status = if (ok) "OSC WYSŁANY" else "BŁĄD OSC"
                         commandLog = message
@@ -237,54 +237,101 @@ private fun SmallAction(label: String, modifier: Modifier = Modifier, onClick: (
 }
 
 @Composable
-private fun ValueControlScreen(onSend: (String) -> Unit) {
+private fun ValueControlScreen(feedbackLog: String, commandLog: String, onSend: (String) -> Unit) {
+    val groups = listOf("DIMMER", "POSITION", "COLOR", "GOBO", "BEAM", "ALL")
+    val attributes = mapOf(
+        "DIMMER" to listOf("Dimmer", "Shutter", "Strobe", "Strobe Speed"),
+        "POSITION" to listOf("Pan", "Tilt", "Pan Fine", "Tilt Fine"),
+        "COLOR" to listOf("Red", "Green", "Blue", "Color Temperature", "Hue", "Saturation"),
+        "GOBO" to listOf("Gobo1", "Gobo2", "Gobo Rotation", "Gobo Index"),
+        "BEAM" to listOf("Zoom", "Focus", "Iris", "Frost", "Prism", "Prism Rotation", "Blade 1", "Blade 2"),
+        "ALL" to listOf("Dimmer", "Pan", "Tilt", "Zoom", "Focus", "Iris", "Speed", "Size", "Phase", "Width", "Red", "Green", "Blue")
+    )
+    var group by remember { mutableStateOf("DIMMER") }
     var command by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
                 Text("PROGRAMMER / VALUE CONTROL", color = TextMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("Ekranowe encodery • wysyłanie przez OSC", color = Muted, fontSize = 10.sp)
+                Text("Atrybuty • encodery • pozycja • kolor", color = Muted, fontSize = 10.sp)
             }
             Text("OSC", color = Blue, fontWeight = FontWeight.Black, fontSize = 12.sp)
         }
-        LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(bottom = 6.dp)) {
-            items(listOf("Dimmer", "Pan", "Tilt", "Zoom", "Focus", "Iris", "Speed", "Size", "Phase", "Width")) { attribute ->
-                ValueEncoderCard(attribute, onSend)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            groups.forEach { item ->
+                Button(onClick = { group = item }, modifier = Modifier.weight(1f).height(34.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (group == item) Blue else Panel),
+                    contentPadding = PaddingValues(horizontal = 1.dp)) {
+                    Text(item, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
-        Text("COMMAND LINE", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        if (group == "POSITION") {
+            Text("POSITION CONTROL", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ValueEncoderCard("Pan", onSend, Modifier.weight(1f), -270f..270f)
+                ValueEncoderCard("Tilt", onSend, Modifier.weight(1f), -135f..135f)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Pan", "Tilt").forEach { axis ->
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(axis.uppercase() + " NUDGE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf(-10, -1, 1, 10).forEach { step ->
+                                OutlinedButton(onClick = { onSend("Attribute \\"$axis\\" At Relative $step") },
+                                    modifier = Modifier.weight(1f).height(34.dp), contentPadding = PaddingValues(0.dp)) {
+                                    Text(if (step > 0) "+$step" else step.toString(), fontSize = 9.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(7.dp), horizontalArrangement = Arrangement.spacedBy(7.dp),
+                contentPadding = PaddingValues(bottom = 4.dp)) {
+                items(attributes[group].orEmpty()) { attribute -> ValueEncoderCard(attribute, onSend) }
+            }
+        }
+        Text("COMMAND LINE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(value = command, onValueChange = { command = it }, modifier = Modifier.weight(1f),
-                singleLine = true, placeholder = { Text("Wpisz komendę grandMA3") },
+                singleLine = true, placeholder = { Text("Komenda grandMA3") },
                 colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextMain, unfocusedTextColor = TextMain,
                     focusedBorderColor = Blue, unfocusedBorderColor = Muted))
             Button(onClick = { if (command.isNotBlank()) { onSend(command.trim()); command = "" } },
                 modifier = Modifier.height(54.dp), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("SEND") }
         }
-        Text("Uwaga: dostępność atrybutów i składnia komend zależą od zaznaczenia oraz konfiguracji grandMA3. Wysłanie OSC nie potwierdza wykonania polecenia.", color = Muted, fontSize = 9.sp)
+        Text("TX: $commandLog", color = Muted, fontSize = 9.sp, maxLines = 1)
+        Text("RX: $feedbackLog", color = TextMain, fontSize = 9.sp, maxLines = 2)
+        Text("RX pokazuje surowy odebrany komunikat OSC. Pełna synchronizacja executorów wymaga mapowania adresów feedback skonfigurowanych w grandMA3.", color = Muted, fontSize = 8.sp)
     }
 }
 
 @Composable
-private fun ValueEncoderCard(attribute: String, onSend: (String) -> Unit) {
-    var value by remember(attribute) { mutableFloatStateOf(if (attribute == "Dimmer") 0f else 50f) }
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Panel)) {
+private fun ValueEncoderCard(
+    attribute: String,
+    onSend: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    range: ClosedFloatingPointRange<Float> = 0f..100f
+) {
+    var value by remember(attribute) { mutableFloatStateOf(if (attribute == "Dimmer") 0f else if (range.start < 0f) 0f else 50f) }
+    Card(modifier, shape = RoundedCornerShape(10.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
         Column(Modifier.padding(horizontal = 9.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(attribute.uppercase(), color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            Text(value.toInt().toString(), color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Black)
-            Slider(value = value, onValueChange = { value = it }, valueRange = 0f..100f,
-                onValueChangeFinished = { onSend("Attribute \"$attribute\" At ${value.toInt()}") },
+            Text(attribute.uppercase(), color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(if (range.start < 0f) "%.1f".format(value) else value.toInt().toString(),
+                color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Black)
+            Slider(value = value, onValueChange = { value = it }, valueRange = range,
+                onValueChangeFinished = { onSend("Attribute \\"$attribute\\" At \${"%.1f".format(value)}") },
                 modifier = Modifier.height(30.dp), colors = SliderDefaults.colors(thumbColor = Blue, activeTrackColor = Blue))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { value = (value - 5f).coerceAtLeast(0f); onSend("Attribute \"$attribute\" At ${value.toInt()}") },
-                    contentPadding = PaddingValues(horizontal = 4.dp)) { Text("−5", color = TextMain) }
-                TextButton(onClick = { value = 0f; onSend("Attribute \"$attribute\" At 0") },
-                    contentPadding = PaddingValues(horizontal = 4.dp)) { Text("MIN", color = Muted, fontSize = 10.sp) }
-                TextButton(onClick = { value = (value + 5f).coerceAtMost(100f); onSend("Attribute \"$attribute\" At ${value.toInt()}") },
-                    contentPadding = PaddingValues(horizontal = 4.dp)) { Text("+5", color = TextMain) }
+                TextButton(onClick = { value = (value - 5f).coerceAtLeast(range.start); onSend("Attribute \\"$attribute\\" At \${"%.1f".format(value)}") },
+                    contentPadding = PaddingValues(horizontal = 3.dp)) { Text("−5", color = TextMain, fontSize = 10.sp) }
+                TextButton(onClick = { value = 0f.coerceIn(range.start, range.endInclusive); onSend("Attribute \\"$attribute\\" At \${"%.1f".format(value)}") },
+                    contentPadding = PaddingValues(horizontal = 3.dp)) { Text("ZERO", color = Muted, fontSize = 9.sp) }
+                TextButton(onClick = { value = (value + 5f).coerceAtMost(range.endInclusive); onSend("Attribute \\"$attribute\\" At \${"%.1f".format(value)}") },
+                    contentPadding = PaddingValues(horizontal = 3.dp)) { Text("+5", color = TextMain, fontSize = 10.sp) }
             }
         }
     }
