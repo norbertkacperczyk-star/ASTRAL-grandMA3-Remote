@@ -278,7 +278,7 @@ private fun ValueControlScreen(feedbackLog: String, commandLog: String, onSend: 
                         Text(axis.uppercase() + " NUDGE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             listOf(-10, -1, 1, 10).forEach { step ->
-                                OutlinedButton(onClick = { onSend("Attribute \\"$axis\\" At Relative $step") },
+                                OutlinedButton(onClick = { onSend("Attribute \"$axis\" At Relative $step") },
                                     modifier = Modifier.weight(1f).height(34.dp), contentPadding = PaddingValues(0.dp)) {
                                     Text(if (step > 0) "+$step" else step.toString(), fontSize = 9.sp)
                                 }
@@ -323,14 +323,14 @@ private fun ValueEncoderCard(
             Text(if (range.start < 0f) "%.1f".format(value) else value.toInt().toString(),
                 color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Black)
             Slider(value = value, onValueChange = { value = it }, valueRange = range,
-                onValueChangeFinished = { onSend("Attribute \\"$attribute\\" At \${"%.1f".format(value)}") },
+                onValueChangeFinished = { onSend("Attribute \"$attribute\" At ${"%.1f".format(value)}") },
                 modifier = Modifier.height(30.dp), colors = SliderDefaults.colors(thumbColor = Blue, activeTrackColor = Blue))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { value = (value - 5f).coerceAtLeast(range.start); onSend("Attribute \\"$attribute\\" At \${"%.1f".format(value)}") },
+                TextButton(onClick = { value = (value - 5f).coerceAtLeast(range.start); onSend("Attribute \"$attribute\" At ${"%.1f".format(value)}") },
                     contentPadding = PaddingValues(horizontal = 3.dp)) { Text("−5", color = TextMain, fontSize = 10.sp) }
-                TextButton(onClick = { value = 0f.coerceIn(range.start, range.endInclusive); onSend("Attribute \\"$attribute\\" At \${"%.1f".format(value)}") },
+                TextButton(onClick = { value = 0f.coerceIn(range.start, range.endInclusive); onSend("Attribute \"$attribute\" At ${"%.1f".format(value)}") },
                     contentPadding = PaddingValues(horizontal = 3.dp)) { Text("ZERO", color = Muted, fontSize = 9.sp) }
-                TextButton(onClick = { value = (value + 5f).coerceAtMost(range.endInclusive); onSend("Attribute \\"$attribute\\" At \${"%.1f".format(value)}") },
+                TextButton(onClick = { value = (value + 5f).coerceAtMost(range.endInclusive); onSend("Attribute \"$attribute\" At ${"%.1f".format(value)}") },
                     contentPadding = PaddingValues(horizontal = 3.dp)) { Text("+5", color = TextMain, fontSize = 10.sp) }
             }
         }
